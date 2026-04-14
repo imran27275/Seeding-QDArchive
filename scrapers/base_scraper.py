@@ -1,10 +1,3 @@
-"""
-scrapers/base_scraper.py
-─────────────────────────────────────────────────────────────────
-Abstract base class that all repository scrapers must implement.
-Each repository gets its own scraper file in this folder.
-"""
-
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -54,7 +47,7 @@ class BaseScraper(ABC):
         """
         ...
 
-    # ── Shared file-type helpers ───────────────────────────────
+    # Shared file-type helpers
 
     @staticmethod
     def is_qda_file(filename: str) -> bool:

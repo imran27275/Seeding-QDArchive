@@ -1,10 +1,3 @@
-"""
-downloader.py
-─────────────────────────────────────────────────────────────────
-Shared file download utilities for the Seeding-QDArchive pipeline.
-Handles retries, atomic writes, resume detection, and polite delays.
-"""
-
 import logging
 import re
 import time

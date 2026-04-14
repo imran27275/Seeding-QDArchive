@@ -1,29 +1,3 @@
-"""
-pipeline.py
-─────────────────────────────────────────────────────────────────
-Main entry point for the Seeding-QDArchive acquisition pipeline.
-
-Features:
-  - Downloads ALL file types per project (QDA + PDFs, audio,
-    video, images, transcripts, spreadsheets, etc.)
-  - Auto-saves progress every 25 projects to data/progress.json
-  - Press Ctrl+C at any time to stop gracefully — progress saved,
-    resume from where you left off next run
-  - Skips already-downloaded projects (idempotent)
-
-Usage:
-    python pipeline.py                    # run all sources
-    python pipeline.py --source dans      # only DANS
-    python pipeline.py --source uni_halle # only uni-halle
-    python pipeline.py --no-download      # metadata only
-    python pipeline.py --stats            # print DB stats and exit
-    python pipeline.py --export           # export CSVs and exit
-
-Repositories:
-    DANS       (#5)  — https://dans.knaw.nl          — Dataverse API
-    uni-halle  (#16) — https://opendata.uni-halle.de — OAI-PMH
-"""
-
 import argparse
 import json
 import logging
@@ -47,7 +21,7 @@ from downloader import download_file, AccessRestrictedError, polite_delay
 from scrapers.dans_scraper import DANSScraper
 from scrapers.uni_halle_scraper import UniHalleScraper
 
-# ── Logging ────────────────────────────────────────────────────
+# Logging
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -59,7 +33,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pipeline")
 
-# ── Graceful shutdown flag ─────────────────────────────────────
+# Graceful shutdown flag
 _shutdown_requested = False
 
 
@@ -78,9 +52,7 @@ def _handle_sigint(sig, frame):
 signal.signal(signal.SIGINT, _handle_sigint)
 
 
-# ══════════════════════════════════════════════════════════════
 # Progress tracking
-# ══════════════════════════════════════════════════════════════
 
 def load_progress() -> dict:
     """Load saved progress from disk. Returns empty dict if none."""
@@ -122,9 +94,7 @@ def is_completed(progress: dict, source: str, project_url: str) -> bool:
     return project_url in progress.get("completed", {}).get(source, [])
 
 
-# ══════════════════════════════════════════════════════════════
 # Core runner
-# ══════════════════════════════════════════════════════════════
 
 def run_scraper(scraper, con, download: bool = True,
                 progress: dict = None) -> int:
@@ -168,7 +138,7 @@ def run_scraper(scraper, con, download: bool = True,
 
     for idx, project in enumerate(pending, start=1):
 
-        # ── Graceful shutdown check ─────────────────────────────
+        # Graceful shutdown check 
         if _shutdown_requested:
             logger.info("[%s] Shutdown requested. Stopping after %d projects.",
                         source, saved)
@@ -178,7 +148,7 @@ def run_scraper(scraper, con, download: bool = True,
         title = project.get("title", "untitled")
         logger.info("[%s] [%d/%d] %s", source, idx, len(pending), title[:65])
 
-        # ── Insert project ──────────────────────────────────────
+        # Insert project
         project_id = insert_project(
             con,
             query_string               = project.get("query_string"),
@@ -201,7 +171,7 @@ def run_scraper(scraper, con, download: bool = True,
             mark_completed(progress, source, project["project_url"])
             continue
 
-        # ── Insert keywords / persons / licenses ────────────────
+        # Insert keywords / persons / licenses
         for kw in scraper.get_keywords(project):
             insert_keyword(con, project_id, kw)
         for name, role in scraper.get_persons(project):
@@ -209,7 +179,7 @@ def run_scraper(scraper, con, download: bool = True,
         for lic in scraper.get_licenses(project):
             insert_license(con, project_id, lic)
 
-        # ── Process ALL files ───────────────────────────────────
+        # Process ALL files
         files = scraper.get_files(project)
 
         qda_files  = [f for f in files if scraper.is_qda_file(f["file_name"])]
@@ -245,7 +215,7 @@ def run_scraper(scraper, con, download: bool = True,
             if not download or not file_url or not local_path:
                 continue
 
-            # ── Download ────────────────────────────────────────
+            # Download
             polite_delay(DOWNLOAD_DELAY)
             try:
                 ok, dl_status = download_file(
@@ -268,12 +238,12 @@ def run_scraper(scraper, con, download: bool = True,
                 update_file_status(con, file_id, status=FAILED)
                 logger.error("  ❌ Error for %s: %s", f["file_name"], e)
 
-        # ── Mark project complete ───────────────────────────────
+        # Mark project complete
         mark_completed(progress, source, project["project_url"])
         saved           += 1
         since_last_save += 1
 
-        # ── Auto-save progress every N projects ─────────────────
+        # Auto-save progress every N projects 
         if since_last_save >= PROGRESS_SAVE_INTERVAL:
             save_progress(progress)
             since_last_save = 0
@@ -285,9 +255,7 @@ def run_scraper(scraper, con, download: bool = True,
     return saved
 
 
-# ══════════════════════════════════════════════════════════════
 # MAIN
-# ══════════════════════════════════════════════════════════════
 
 def _print_final_report(con, totals: dict, progress: dict,
                         stopped_early: bool) -> None:
@@ -308,13 +276,13 @@ def _print_final_report(con, totals: dict, progress: dict,
         print("  ✅  PIPELINE COMPLETE")
     print(sep)
 
-    # ── Per-repository breakdown ────────────────────────────────
+    # Per-repository breakdown
     for repo_label, new_count in totals.items():
         print(f"\n  📦 {repo_label}")
         print(sep2)
         print(f"  New projects this run    : {new_count}")
 
-    # ── Database totals ─────────────────────────────────────────
+    # Database totals
     print(f"\n{sep2}")
     print("  📊 DATABASE TOTALS")
     print(sep2)
@@ -330,7 +298,7 @@ def _print_final_report(con, totals: dict, progress: dict,
     for folder, count in cur.fetchall():
         print(f"    {folder:<30} : {count}")
 
-    # ── Files breakdown ─────────────────────────────────────────
+    # Files breakdown
     print(sep3)
     cur.execute("SELECT COUNT(*) FROM files")
     total_files = cur.fetchone()[0]
@@ -342,7 +310,7 @@ def _print_final_report(con, totals: dict, progress: dict,
                 "SKIPPED": "⏭", "ALREADY_EXISTS": "♻️"}.get(status, "•")
         print(f"    {icon} {status:<28} : {count}")
 
-    # ── QDA file breakdown ──────────────────────────────────────
+    # QDA file breakdown
     print(sep3)
     # Build QDA extension filter for SQL
     qda_ext_list = "', '".join(e.lstrip(".") for e in QDA_EXTENSIONS)
@@ -372,7 +340,7 @@ def _print_final_report(con, totals: dict, progress: dict,
     else:
         print("    (none found)")
 
-    # ── Companion file types ────────────────────────────────────
+    # Companion file types
     print(sep3)
     cur.execute(f"""
         SELECT file_type, COUNT(*) FROM files
@@ -388,7 +356,7 @@ def _print_final_report(con, totals: dict, progress: dict,
         for ftype, count in companion_rows:
             print(f"    .{ftype:<29} : {count}")
 
-    # ── Disk usage ──────────────────────────────────────────────
+    # Disk usage
     print(sep3)
     total_disk = 0
     if FILES_DIR.exists():
@@ -397,13 +365,13 @@ def _print_final_report(con, totals: dict, progress: dict,
                 total_disk += f.stat().st_size
     print(f"  Disk usage (files/)      : {_human_size(total_disk)}")
 
-    # ── Metadata tables ─────────────────────────────────────────
+    # Metadata tables
     print(sep3)
     for table in ("keywords", "person_role", "licenses"):
         cur.execute(f"SELECT COUNT(*) FROM {table}")
         print(f"  {table:<27}  : {cur.fetchone()[0]} rows")
 
-    # ── All-run totals ──────────────────────────────────────────
+    # All-run totals
     print(sep3)
     total_ever = sum(len(v) for v in progress.get("completed", {}).values())
     print(f"  Total projects (all runs): {total_ever}")
@@ -492,23 +460,23 @@ def main():
     logger.info("  Stop      : Ctrl+C for graceful exit with progress saved")
     logger.info("=" * 60)
 
-    # ── DANS (Repository #5) ────────────────────────────────────
+    # DANS (Repository #5)
     if source in ("dans", "both") and not _shutdown_requested:
         n = run_scraper(DANSScraper(), con,
                         download=download, progress=progress)
         totals["DANS (repo #5)"] = n
 
-    # ── uni-halle (Repository #16) ──────────────────────────────
+    # uni-halle (Repository #16)
     if source in ("uni_halle", "both") and not _shutdown_requested:
         n = run_scraper(UniHalleScraper(), con,
                         download=download, progress=progress)
         totals["uni-halle (repo #16)"] = n
 
-    # ── Auto-export CSVs ────────────────────────────────────────
+    # Auto-export CSVs
     logger.info("Exporting to CSV...")
     export_all(con)
 
-    # ── Final rich terminal report ──────────────────────────────
+    # Final rich terminal report
     _print_final_report(con, totals, progress, _shutdown_requested)
 
     con.close()

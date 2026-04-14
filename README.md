@@ -2,7 +2,7 @@
 
 A research data pipeline for discovering, downloading, and archiving **Qualitative Data Analysis (QDA)** datasets from open academic repositories.
 
-Built as part of the *Seeding QDArchive* research project at FAU Erlangen-Nürnberg, supervised by Prof. Dirk.
+Built as part of the *Seeding QDArchive* research project at FAU Erlangen-Nürnberg, supervised by Prof. Riehle.
 
 ---
 
@@ -67,15 +67,7 @@ Seeding-QDArchive/
 │
 └── files/                    # Downloaded files (auto-created)
     ├── DANS/
-    │   └── <project_folder>/
-    │       └── <version_folder>/
-    │           ├── study.qdpx
-    │           ├── interview.mp3
-    │           └── transcript.pdf
     └── uni_halle/
-        └── <project_folder>/
-            ├── data.qdpx
-            └── notes.docx
 ```
 
 ---
@@ -192,15 +184,6 @@ CSV files are also exported automatically at the end of every run.
 `qualitative research data`, `qualitative data analysis`, `interview study`, `interview transcript`, `thematic analysis`, `grounded theory`, `QDA`
 
 Results are de-duplicated by project URL / DOI before being inserted into the database.
-
----
-
-## Adding a New Repository
-
-1. Create `scrapers/<repo_name>_scraper.py` inheriting from `BaseScraper`
-2. Implement `scrape_all()` and `get_files()` — `get_files()` must return ALL files
-3. Add the repository entry to `REPOSITORIES` in `config.py`
-4. Add the scraper to `pipeline.py`
 
 ---
 

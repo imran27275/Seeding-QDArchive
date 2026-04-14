@@ -1,18 +1,3 @@
-"""
-database.py
-─────────────────────────────────────────────────────────────────
-All SQLite database logic for the Seeding-QDArchive pipeline.
-
-Schema (5 tables, per professor's specification):
-  projects    — one row per research project/dataset
-  files       — id, project_id, file_name, file_type, status
-  keywords    — raw keywords as returned by the source
-  person_role — authors, uploaders, contributors
-  licenses    — one row per license per project
-
-Rule: store raw values exactly as received. No cleaning at this stage.
-"""
-
 import csv
 import logging
 import sqlite3
@@ -23,7 +8,7 @@ from config import DB_PATH, CSV_DIR
 
 logger = logging.getLogger(__name__)
 
-# ── File status constants ──────────────────────────────────────
+# File status constants
 SUCCESS                    = "SUCCESS"
 FAILED                     = "FAILED"
 RESTRICTED                 = "RESTRICTED"
@@ -32,7 +17,7 @@ ALREADY_EXISTS             = "ALREADY_EXISTS"
 FAILED_SERVER_UNRESPONSIVE = "FAILED_SERVER_UNRESPONSIVE"
 FAILED_LOGIN_REQUIRED      = "FAILED_LOGIN_REQUIRED"
 
-# ── Person role constants ──────────────────────────────────────
+# Person role constants
 ROLE_AUTHOR      = "AUTHOR"
 ROLE_UPLOADER    = "UPLOADER"
 ROLE_OWNER       = "OWNER"
@@ -132,7 +117,7 @@ def init_db() -> None:
     logger.info("Database initialised at: %s", DB_PATH)
 
 
-# ── Insert helpers ─────────────────────────────────────────────
+# Insert helpers
 
 def insert_project(con: sqlite3.Connection, *,
                    query_string, repository_id, repository_url,
@@ -274,7 +259,7 @@ def _normalise_license(raw: str) -> str:
     return raw
 
 
-# ── Stats & export ─────────────────────────────────────────────
+# Stats & export
 
 def print_stats(con: sqlite3.Connection) -> None:
     cur = con.cursor()

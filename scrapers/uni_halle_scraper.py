@@ -1,35 +1,3 @@
-"""
-scrapers/uni_halle_scraper.py
-─────────────────────────────────────────────────────────────────
-Scraper for opendata.uni-halle.de (Share_it) — Repository #16
-
-Access method: OAI-PMH harvest + HTML scraping for file URLs
-
-WHY NOT REST API:
-  opendata.uni-halle.de has a site-wide CAPTCHA that blocks the
-  DSpace 7 REST API (/server/api/...). Two things bypass it:
-
-  1. OAI-PMH (/oai/request) — standard machine-harvest protocol,
-     not behind the CAPTCHA wall. Used for metadata.
-
-  2. Browser-like HTTP requests — polite scraping with real
-     browser User-Agent + random jitter delays. The CAPTCHA
-     targets bots that make rapid, headless requests. Slow,
-     browser-mimicking requests to individual item pages work.
-     (Approach confirmed by Anita Kamani's pipeline.)
-
-Download strategy:
-  1. OAI-PMH full harvest → collect all record metadata
-  2. Filter locally for QDA-related records
-  3. For each QDA project, visit the item HTML page with a
-     browser User-Agent and scrape bitstream hrefs using:
-       r'href="(/bitstream/[^"?]+)"'
-  4. Download ALL discovered files (QDA + companion: PDF, audio,
-     video, images, transcripts, spreadsheets, etc.)
-
-download_method = "SCRAPING" (recorded in DB)
-"""
-
 import logging
 import random
 import re
@@ -105,7 +73,7 @@ class UniHalleScraper(BaseScraper):
             "Connection": "keep-alive",
         })
 
-    # ── OAI-PMH request helper ─────────────────────────────────
+    # OAI-PMH request helper
     # OAI uses Accept: application/xml, not the browser headers above
 
     def _oai_request(self, params: dict) -> ET.Element | None:
@@ -136,7 +104,7 @@ class UniHalleScraper(BaseScraper):
                     time.sleep(RETRY_DELAY)
         return None
 
-    # ── Main harvest ───────────────────────────────────────────
+    # Main harvest
 
     def scrape_all(self, keywords: list[str] = None) -> list[dict]:
         """
@@ -198,7 +166,7 @@ class UniHalleScraper(BaseScraper):
         )
         return qda_projects
 
-    # ── Record parser ──────────────────────────────────────────
+    # Record parser
 
     def _parse_record(self, record: ET.Element) -> dict | None:
         header = record.find("oai:header", NS)
@@ -281,7 +249,7 @@ class UniHalleScraper(BaseScraper):
             "_has_qda_hint":   has_qda_hint,
         }
 
-    # ── Files ──────────────────────────────────────────────────
+    # Files
 
     def get_files(self, project: dict) -> list[dict]:
         """
@@ -403,7 +371,7 @@ class UniHalleScraper(BaseScraper):
 
         return []
 
-    # ── Enrichment ─────────────────────────────────────────────
+    # Enrichment
 
     def get_keywords(self, project: dict) -> list[str]:
         return project.get("_subjects", [])

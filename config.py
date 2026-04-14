@@ -1,13 +1,6 @@
-"""
-config.py
-─────────────────────────────────────────────────────────────────
-Central configuration for the Seeding-QDArchive pipeline.
-Edit this file to tune queries, paths, and repository settings.
-"""
-
 from pathlib import Path
 
-# ── Paths ──────────────────────────────────────────────────────
+# Paths 
 BASE_DIR    = Path(__file__).parent
 DATA_DIR    = BASE_DIR / "data"
 FILES_DIR   = BASE_DIR / "files"       # downloaded files live here
@@ -16,7 +9,7 @@ CSV_DIR     = DATA_DIR / "csv"
 LOG_FILE    = DATA_DIR / "pipeline.log"
 PROGRESS_FILE = DATA_DIR / "progress.json"  # tracks resume state
 
-# ── Repository registry ────────────────────────────────────────
+# Repository registry 
 REPOSITORIES = {
     "dans": {
         "id":            5,
@@ -44,7 +37,7 @@ REPOSITORIES = {
     },
 }
 
-# ── Search queries ─────────────────────────────────────────────
+# Search queries 
 SEARCH_KEYWORDS = [
     # Primary — QDA file extensions / software names
     "qdpx",
@@ -63,7 +56,7 @@ SEARCH_KEYWORDS = [
     "QDA",
 ]
 
-# ── QDA file extensions ────────────────────────────────────────
+# QDA file extensions
 # Projects must contain at least one of these to be included.
 QDA_EXTENSIONS = {
     ".qdpx",     # REFI-QDA standard (cross-platform)
@@ -82,7 +75,7 @@ QDA_EXTENSIONS = {
     ".quirkos",  # Quirkos
 }
 
-# ── Qualitative data companion extensions ─────────────────────
+# Qualitative data companion extensions
 # Once a project is identified as QDA-relevant (contains a QDA
 # file), ALL files in that project are downloaded — including
 # these companion formats (transcripts, audio, video, images etc.)
@@ -128,7 +121,7 @@ QUALITATIVE_DATA_EXTENSIONS = {
 # All downloadable extensions = QDA + qualitative companion files
 ALL_DOWNLOAD_EXTENSIONS = QDA_EXTENSIONS | QUALITATIVE_DATA_EXTENSIONS
 
-# ── Download / pipeline settings ──────────────────────────────
+# Download / pipeline settings
 MAX_RETRIES        = 3
 RETRY_DELAY        = 5      # seconds between retries
 DOWNLOAD_DELAY     = 2      # seconds between file downloads (polite)
@@ -140,7 +133,7 @@ PAGE_SIZE          = 20     # results per API page
 # On Ctrl+C the pipeline saves immediately and exits cleanly.
 PROGRESS_SAVE_INTERVAL = 25
 
-# ── OAI-PMH settings (uni-halle) ──────────────────────────────
+# OAI-PMH settings (uni-halle)
 UNI_HALLE_OAI_ENDPOINT = "https://opendata.uni-halle.de/oai/request"
 UNI_HALLE_OAI_SET      = None   # None = harvest all; e.g. "openaire_data"
 OAI_METADATA_PREFIX    = "oai_dc"

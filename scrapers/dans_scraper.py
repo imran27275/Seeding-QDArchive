@@ -1,19 +1,3 @@
-"""
-scrapers/dans_scraper.py
-─────────────────────────────────────────────────────────────────
-Scraper for DANS (Dutch National Data Archive) — Repository #5
-Access method: Dataverse REST API
-API base:      https://dataverse.nl/api
-
-Strategy:
-  1. Search Dataverse with QDA keywords
-  2. Keep only projects that contain at least one QDA file
-  3. Download ALL files in those projects (QDA + companion files:
-     PDFs, transcripts, audio, video, images, spreadsheets, etc.)
-
-Restricted files are flagged in the metadata and skipped.
-"""
-
 import logging
 import time
 from pathlib import Path
@@ -40,7 +24,7 @@ class DANSScraper(BaseScraper):
     ACCESS_METHOD = _REPO["access_method"]
     API_BASE      = _REPO["api_base"]
 
-    # ── Low-level API helper ───────────────────────────────────
+    # Low-level API helper
 
     def _api_get(self, url: str, params: dict = None) -> dict | None:
         for attempt in range(1, MAX_RETRIES + 1):
@@ -57,7 +41,7 @@ class DANSScraper(BaseScraper):
                     time.sleep(RETRY_DELAY)
         return None
 
-    # ── Main harvest ───────────────────────────────────────────
+    # Main harvest
 
     def scrape_all(self, keywords: list[str] = None) -> list[dict]:
         """
@@ -131,7 +115,7 @@ class DANSScraper(BaseScraper):
         self.logger.info("[DANS] Found %d QDA projects total.", len(projects))
         return projects
 
-    # ── Project builder ────────────────────────────────────────
+    # Project builder
 
     def _build_project(self, item: dict, latest: dict,
                        query: str, files: list) -> dict:
@@ -204,7 +188,7 @@ class DANSScraper(BaseScraper):
             "_latest":  latest,
         }
 
-    # ── Files ──────────────────────────────────────────────────
+    # Files
 
     def get_files(self, project: dict) -> list[dict]:
         """
@@ -247,7 +231,7 @@ class DANSScraper(BaseScraper):
             })
         return result
 
-    # ── Enrichment ─────────────────────────────────────────────
+    # Enrichment
 
     def get_keywords(self, project: dict) -> list[str]:
         fields   = project.get("_fields", {})
