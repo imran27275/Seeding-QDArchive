@@ -4,7 +4,7 @@ from pathlib import Path
 BASE_DIR    = Path(__file__).parent
 DATA_DIR    = BASE_DIR / "data"
 FILES_DIR   = BASE_DIR / "files"       # downloaded files live here
-DB_PATH     = DATA_DIR / "23293639-sq26.db"
+DB_PATH     = DATA_DIR / "23293539-sq26.db"
 CSV_DIR     = DATA_DIR / "csv"
 LOG_FILE    = DATA_DIR / "pipeline.log"
 PROGRESS_FILE = DATA_DIR / "progress.json"  # tracks resume state

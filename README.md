@@ -54,7 +54,7 @@ Seeding-QDArchive/
 │   └── uni_halle_scraper.py  # uni-halle — OAI-PMH (repo #16)
 │
 ├── data/
-│   ├── 23293639-sq26.db      # SQLite database (auto-created)
+│   ├── 23293539-sq26.db      # SQLite database (auto-created)
 │   ├── progress.json         # Resume state (auto-created)
 │   ├── pipeline.log          # Run log (auto-created)
 │   └── csv/                  # CSV exports (auto-created)
