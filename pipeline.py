@@ -7,8 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from config import (
-    LOG_FILE, DATA_DIR, DOWNLOAD_DELAY,
+    LOG_FILE, DATA_DIR, DOWNLOAD_DELAY, FILES_DIR,
     SEARCH_KEYWORDS, PROGRESS_FILE, PROGRESS_SAVE_INTERVAL,
+    DOWNLOAD_TARGET_BYTES,
 )
 from database import (
     init_db, get_connection,
@@ -21,7 +22,7 @@ from downloader import download_file, AccessRestrictedError, polite_delay
 from scrapers.dans_scraper import DANSScraper
 from scrapers.uni_halle_scraper import UniHalleScraper
 
-# Logging
+# Logging 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -33,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("pipeline")
 
-# Graceful shutdown flag
+# Graceful shutdown flag 
 _shutdown_requested = False
 
 
@@ -96,8 +97,17 @@ def is_completed(progress: dict, source: str, project_url: str) -> bool:
 
 # Core runner
 
+def _get_disk_usage(folder: Path) -> int:
+    """Return total bytes of all files in folder recursively."""
+    if not folder.exists():
+        return 0
+    return sum(f.stat().st_size for f in folder.rglob("*")
+               if f.is_file() and f.suffix != ".tmp")
+
+
 def run_scraper(scraper, con, download: bool = True,
-                progress: dict = None) -> int:
+                progress: dict = None,
+                cap_bytes: int = None) -> int:
     """
     1. Harvest all projects from the scraper
     2. Skip already-completed ones (from progress.json)
@@ -107,6 +117,7 @@ def run_scraper(scraper, con, download: bool = True,
        - Mark as completed in progress
     4. Auto-save progress every PROGRESS_SAVE_INTERVAL projects
     5. Stop cleanly if Ctrl+C was pressed
+    6. Stop if cap_bytes is set and disk usage exceeds it
 
     Returns number of new projects saved this run.
     """
@@ -148,7 +159,7 @@ def run_scraper(scraper, con, download: bool = True,
         title = project.get("title", "untitled")
         logger.info("[%s] [%d/%d] %s", source, idx, len(pending), title[:65])
 
-        # Insert project
+        # Insert project 
         project_id = insert_project(
             con,
             query_string               = project.get("query_string"),
@@ -215,6 +226,19 @@ def run_scraper(scraper, con, download: bool = True,
             if not download or not file_url or not local_path:
                 continue
 
+            # Size cap check (real disk usage)
+            if cap_bytes is not None and download:
+                used = _get_disk_usage(FILES_DIR)
+                if used >= cap_bytes:
+                    logger.warning(
+                        "🛑 Size cap reached (%.1f GB used / %.1f GB limit). "
+                        "Stopping downloads for this scraper.",
+                        used / (1024**3), cap_bytes / (1024**3)
+                    )
+                    update_file_status(con, file_id, status=SKIPPED)
+                    # Skip remaining files in this project too
+                    continue
+
             # Download
             polite_delay(DOWNLOAD_DELAY)
             try:
@@ -243,7 +267,7 @@ def run_scraper(scraper, con, download: bool = True,
         saved           += 1
         since_last_save += 1
 
-        # Auto-save progress every N projects 
+        # Auto-save progress every N projects
         if since_last_save >= PROGRESS_SAVE_INTERVAL:
             save_progress(progress)
             since_last_save = 0
@@ -460,13 +484,40 @@ def main():
     logger.info("  Stop      : Ctrl+C for graceful exit with progress saved")
     logger.info("=" * 60)
 
-    # DANS (Repository #5)
+    # DANS — all 4 stations with shared deduplication
     if source in ("dans", "both") and not _shutdown_requested:
-        n = run_scraper(DANSScraper(), con,
-                        download=download, progress=progress)
-        totals["DANS (repo #5)"] = n
+        shared_dois  = set()   # global DOI deduplication across stations
+        bytes_so_far = 0       # running total for size cap
+        dans_total   = 0
 
-    # uni-halle (Repository #16)
+        station_keys = ["dans_ssh", "dans_archaeology",
+                        "dans_lifesciences", "dans_phys"]
+
+        for station_key in station_keys:
+            if _shutdown_requested:
+                break
+            # Check real disk usage — stop if cap already reached
+            current_usage = _get_disk_usage(FILES_DIR)
+            if download and current_usage >= DOWNLOAD_TARGET_BYTES:
+                logger.warning(
+                    "🛑 Size cap reached (%.1f GB). "
+                    "Skipping remaining DANS stations.",
+                    current_usage / (1024**3)
+                )
+                break
+            scraper = DANSScraper(
+                repo_key  = station_key,
+                seen_dois = shared_dois,
+            )
+            n = run_scraper(scraper, con,
+                            download=download, progress=progress,
+                            cap_bytes=DOWNLOAD_TARGET_BYTES)
+            dans_total += n
+            totals[f"DANS {station_key}"] = n
+
+        totals["DANS TOTAL (all stations)"] = dans_total
+
+    # uni-halle (Repository #16) 
     if source in ("uni_halle", "both") and not _shutdown_requested:
         n = run_scraper(UniHalleScraper(), con,
                         download=download, progress=progress)
@@ -476,7 +527,7 @@ def main():
     logger.info("Exporting to CSV...")
     export_all(con)
 
-    # Final rich terminal report
+    # Final rich terminal report 
     _print_final_report(con, totals, progress, _shutdown_requested)
 
     con.close()

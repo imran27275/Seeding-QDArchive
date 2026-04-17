@@ -5,24 +5,47 @@ from pathlib import Path
 from config import (
     REPOSITORIES, SEARCH_KEYWORDS, FILES_DIR,
     PAGE_SIZE, API_TIMEOUT, MAX_RETRIES, RETRY_DELAY,
-    QDA_EXTENSIONS, ALL_DOWNLOAD_EXTENSIONS,
+    QDA_EXTENSIONS,
 )
 from downloader import safe_filename
 from scrapers.base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
 
-_REPO = REPOSITORIES["dans"]
+# All 4 stations in priority order (SSH most relevant for QDA)
+STATION_KEYS = [
+    "dans_ssh",
+    "dans_archaeology",
+    "dans_lifesciences",
+    "dans_phys",
+]
 
 
 class DANSScraper(BaseScraper):
+    """
+    Scraper for a single DANS Dataverse station.
+    The pipeline instantiates one per station.
+    """
 
     SOURCE_NAME   = "DANS"
-    REPO_ID       = _REPO["id"]
-    REPO_URL      = _REPO["url"]
-    REPO_FOLDER   = _REPO["folder"]
-    ACCESS_METHOD = _REPO["access_method"]
-    API_BASE      = _REPO["api_base"]
+    REPO_ID       = 5
+    REPO_FOLDER   = "DANS"
+    ACCESS_METHOD = "API-CALL"
+
+    def __init__(self, repo_key: str = "dans_ssh",
+                 seen_dois: set = None):
+        """
+        repo_key : which DANS station key from config.REPOSITORIES
+        seen_dois: shared set across all stations for deduplication.
+                   Pass the same set to all station scrapers to prevent
+                   downloading the same DOI from multiple stations.
+        """
+        super().__init__()
+        repo             = REPOSITORIES[repo_key]
+        self.REPO_URL    = repo["url"]
+        self.API_BASE    = repo["api_base"]
+        self.SOURCE_NAME = repo["name"]
+        self.seen_dois   = seen_dois if seen_dois is not None else set()
 
     # Low-level API helper
 
@@ -45,19 +68,26 @@ class DANSScraper(BaseScraper):
 
     def scrape_all(self, keywords: list[str] = None) -> list[dict]:
         """
-        Search Dataverse with all QDA keywords.
-        Only keep projects that contain at least one QDA file.
-        All files (QDA + companion) in those projects are returned.
+        Search this station with all keywords.
+
+        Returns two lists merged in order:
+          1. QDA projects (have at least one QDA file) — always included
+          2. Companion-only projects — included until size cap reached
+
+        Deduplication: projects already seen (by DOI) across other
+        stations are skipped automatically via shared seen_dois set.
         """
         if keywords is None:
             keywords = SEARCH_KEYWORDS
 
-        self.logger.info("[DANS] Starting Dataverse search...")
-        seen_dois = set()
-        projects  = []
+        self.logger.info("[%s] Starting search...", self.SOURCE_NAME)
+
+        qda_projects      = []   # have at least one QDA file
+        companion_projects= []   # qualitative but no QDA file
+        local_seen        = set()
 
         for keyword in keywords:
-            self.logger.info("[DANS] Query: \"%s\"", keyword)
+            self.logger.info("[%s] Query: \"%s\"", self.SOURCE_NAME, keyword)
             start    = 0
             per_page = PAGE_SIZE
 
@@ -79,8 +109,13 @@ class DANSScraper(BaseScraper):
 
                 for item in items:
                     global_id = item.get("global_id", "")
-                    if not global_id or global_id in seen_dois:
+                    if not global_id:
                         continue
+
+                    # Deduplicate across all stations
+                    if global_id in self.seen_dois or global_id in local_seen:
+                        continue
+                    local_seen.add(global_id)
 
                     ds_data = self._api_get(
                         f"{self.API_BASE}/datasets/:persistentId/",
@@ -89,44 +124,62 @@ class DANSScraper(BaseScraper):
                     if not ds_data:
                         continue
 
-                    ds_body = ds_data.get("data", {})
-                    latest  = ds_body.get("latestVersion", {})
-                    files   = latest.get("files", [])
+                    latest = ds_data.get("data", {}).get("latestVersion", {})
+                    files  = latest.get("files", [])
 
-                    # Gate: only include if at least one QDA file present
-                    has_qda = any(
-                        self.is_qda_file(f.get("dataFile", {})
-                                          .get("filename", ""))
-                        for f in files
-                    )
-                    if not has_qda:
+                    if not files:
                         continue
 
-                    seen_dois.add(global_id)
-                    project = self._build_project(
-                        item, latest, keyword, files
+                    has_qda = any(
+                        self.is_qda_file(
+                            f.get("dataFile", {}).get("filename", ""))
+                        for f in files
                     )
-                    projects.append(project)
+
+                    project = self._build_project(
+                        item, latest, keyword, files, has_qda
+                    )
+
+                    if has_qda:
+                        qda_projects.append(project)
+                    else:
+                        companion_projects.append(project)
 
                 if start + per_page >= total_count:
                     break
                 start += per_page
 
-        self.logger.info("[DANS] Found %d QDA projects total.", len(projects))
-        return projects
+        # Register all found DOIs as seen
+        for p in qda_projects + companion_projects:
+            self.seen_dois.add(p["doi"])
+
+        self.logger.info(
+            "[%s] Found %d QDA projects + %d companion-only projects",
+            self.SOURCE_NAME, len(qda_projects), len(companion_projects)
+        )
+
+        # Return QDA projects first, then companion projects.
+        # The actual size cap is enforced during download in pipeline.py
+        # by checking real disk usage — not by pre-estimating metadata sizes.
+        result = qda_projects + companion_projects
+
+        self.logger.info(
+            "[%s] Returning %d projects (%d QDA-first, %d companion).",
+            self.SOURCE_NAME, len(result),
+            len(qda_projects), len(companion_projects)
+        )
+        return result
 
     # Project builder
 
-    def _build_project(self, item: dict, latest: dict,
-                       query: str, files: list) -> dict:
+    def _build_project(self, item, latest, query, files, has_qda) -> dict:
         global_id = item.get("global_id", "")
         title     = item.get("name", "untitled")
 
         fields = {
             f["typeName"]: f
             for f in latest.get("metadataBlocks", {})
-                           .get("citation", {})
-                           .get("fields", [])
+                           .get("citation", {}).get("fields", [])
         }
 
         description = ""
@@ -153,18 +206,17 @@ class DANSScraper(BaseScraper):
         proj_folder = safe_filename(f"{safe_id}_{title}")
         ver_folder  = safe_filename(version_str) if version_str else None
 
-        # Count file categories for logging
-        qda_count       = sum(1 for f in files
-                              if self.is_qda_file(
-                                  f.get("dataFile", {}).get("filename", "")))
-        companion_count = sum(1 for f in files
-                              if self.is_companion_file(
-                                  f.get("dataFile", {}).get("filename", "")))
-        other_count     = len(files) - qda_count - companion_count
-
+        qda_count  = sum(1 for f in files
+                         if self.is_qda_file(
+                             f.get("dataFile", {}).get("filename", "")))
+        restricted = sum(1 for f in files
+                         if f.get("restricted") or
+                         f.get("dataFile", {}).get("restricted"))
+        tag = "📌 QDA" if has_qda else "📄 companion"
         self.logger.info(
-            "[DANS] Project: %s | files: %d QDA, %d companion, %d other",
-            title[:50], qda_count, companion_count, other_count
+            "[%s] %s %-50s | %d files (%d QDA, %d restricted)",
+            self.SOURCE_NAME, tag, title[:50],
+            len(files), qda_count, restricted
         )
 
         return {
@@ -182,25 +234,14 @@ class DANSScraper(BaseScraper):
             "download_project_folder":    proj_folder,
             "download_version_folder":    ver_folder,
             "download_method":            self.ACCESS_METHOD,
-            # Internal use
-            "_fields":  fields,
-            "_files":   files,
-            "_latest":  latest,
+            "_fields": fields,
+            "_files":  files,
+            "_latest": latest,
         }
 
     # Files
 
     def get_files(self, project: dict) -> list[dict]:
-        """
-        Return file metadata for ALL files in the project.
-
-        File categories:
-          - QDA files      (.qdpx, .atlproj, .mx, etc.)   ← always download
-          - Companion files (.pdf, .docx, .mp3, .mp4, etc.) ← always download
-          - Other files    (anything else)                  ← still download
-            (professor said download everything in a QDA project)
-          - Restricted     (any category)                  ← skip, log only
-        """
         files      = project.get("_files", [])
         proj_folder= project["download_project_folder"]
         ver_folder = project.get("download_version_folder")
@@ -226,7 +267,7 @@ class DANSScraper(BaseScraper):
                 "size":        size,
                 "local_path":  local_dir / name,
                 "restricted":  restricted,
-                "status_note": "Access restricted per Dataverse metadata"
+                "status_note": "Restricted per Dataverse metadata"
                                if restricted else None,
             })
         return result

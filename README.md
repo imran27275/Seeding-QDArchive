@@ -13,6 +13,8 @@ Built as part of the *Seeding QDArchive* research project at FAU Erlangen-Nürnb
 | 5 | DANS (Dutch National Data Archive) | [dans.knaw.nl](https://dans.knaw.nl) | Dataverse REST API |
 | 16 | opendata.uni-halle.de (Share_it) | [opendata.uni-halle.de](https://opendata.uni-halle.de) | OAI-PMH harvest |
 
+> **Note on DANS:** DANS splits its repository into 4 domain-specific data stations. All 4 share repository ID 5 and download to the same `files/DANS/` folder. A global DOI deduplication system ensures the same dataset is never downloaded twice even if it appears in multiple stations.
+> 
 > **Note on uni-halle:** The DSpace 7 REST API (`/server/api/...`) is blocked by a site-wide CAPTCHA. Metadata is instead harvested via **OAI-PMH** (`/oai/request`), which is a standard machine-harvest protocol not subject to the CAPTCHA wall. File downloads use direct bitstream URLs discovered during the OAI harvest. `download_method` is recorded as `SCRAPING` in the database.
 
 ---
@@ -182,8 +184,6 @@ CSV files are also exported automatically at the end of every run.
 
 **Secondary (broader qualitative research terms):**
 `qualitative research data`, `qualitative data analysis`, `interview study`, `interview transcript`, `thematic analysis`, `grounded theory`, `QDA`
-
-Results are de-duplicated by project URL / DOI before being inserted into the database.
 
 ---
 
