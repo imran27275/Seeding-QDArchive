@@ -97,6 +97,7 @@ The SQLite database (`data/23293639-sq26.db`) stores all metadata in **5 tables*
 | `download_project_folder` | TEXT | e.g. `doi_10.34894_XP9ZCU_...` |
 | `download_version_folder` | TEXT | e.g. `v1.0` if versioned |
 | `download_method` | TEXT | `API-CALL` or `SCRAPING` |
+| `type` | TEXT | Project type |
 
 ### `files` — one row per file
 | Column | Type | Notes |
@@ -201,6 +202,17 @@ CSV files are also exported automatically at the end of every run.
 | uni-halle | REST API blocked by CAPTCHA | OAI-PMH harvest used instead |
 | uni-halle | File sizes unavailable | OAI-PMH (Dublin Core) carries no byte counts |
 | DANS | Some files access-restricted (GDPR/embargo) | Skipped, logged as RESTRICTED |
+
+---
+
+**Project classification:**
+ 
+| project_type | Count | Description |
+|---|---|---|
+| `QDA_PROJECT` | 10 | Contains at least one QDA file (`.qdpx`, `.atlproj`, `.mx` etc.) |
+| `QD_PROJECT` | 201 | No QDA file but has primary qualitative data (transcripts, audio, video) |
+| `OTHER_PROJECT` | 72 | Has other valid data files (spreadsheets, images, archives) |
+| `NOT_A_PROJECT` | 29 | No usable files could be determined |
 
 ---
 
