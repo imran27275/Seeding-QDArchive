@@ -205,6 +205,47 @@ CSV files are also exported automatically at the end of every run.
 
 ---
 
+
+## Part 2 — ISIC Classification Pipeline
+
+Once Part 1 acquisition is complete and every project in the database has a `type` (`QDA_PROJECT` / `QD_PROJECT` / `OTHER_PROJECT` / `NOT_A_PROJECT`), the classification pipeline assigns each `QDA_PROJECT` and `QD_PROJECT` an **ISIC Rev. 5** division (2-level taxonomy, e.g. `A01 — Crop and animal production...`), both at the project level and for each individual primary data file.
+
+### Scripts
+
+These live directly in the project root:
+
+```
+Seeding-QDArchive/
+├── classifier.py             # TF-IDF + cosine similarity classifier (imported by the others)
+├── run_classification.py     # ★ Main entry point — classifies projects & files
+├── repository_summary.py     # Prints per-repository stats (for the results form)
+├── export_table.py           # Exports the flat results table as XLSX
+├── generate_report.py        # Generates the final PDF report (histograms + tables)
+│
+└── data/
+    └── isic_taxonomy.json    # Pre-built ISIC Rev. 5 division-level taxonomy
+```
+
+### Requirements
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 1 — Run classification
+
+```bash
+python run_classification.py data/23293539-sq26.db 23293539-sq26-classification.db
+```
+
+This copies the input database (via SQLite's backup API, safe even in WAL mode — the original db is never modified) and, for every `QDA_PROJECT` / `QD_PROJECT`:
+
+- classifies the project as a whole (title + description + license + keywords + filenames + best-effort extracted text of its primary files) into `projects.primary_class` / `projects.secondary_class`
+- classifies each of its primary data files individually into `files.primary_class` / `files.secondary_class`
+- adds the classifier's top terms as extra rows in `keywords`
+
+`OTHER_PROJECT` and `NOT_A_PROJECT` rows are copied over unchanged but are not classified, per the task spec.
+
 **Project classification:**
  
 | project_type | Count | Description |
@@ -213,6 +254,39 @@ CSV files are also exported automatically at the end of every run.
 | `QD_PROJECT` | 201 | No QDA file but has primary qualitative data (transcripts, audio, video) |
 | `OTHER_PROJECT` | 72 | Has other valid data files (spreadsheets, images, archives) |
 | `NOT_A_PROJECT` | 29 | No usable files could be determined |
+
+
+### Step 2 — Repository statistics
+
+```bash
+python repository_summary.py 23293539-sq26-classification.db
+```
+
+Prints, per `repository_id`: the count of each project type found, and the dominant (most common) primary class.
+
+### Step 3 — Export results table
+
+```bash
+python export_table.py 23293539-sq26-classification.db results.xlsx
+```
+
+Produces `results.xlsx` with columns: `repository_id`, `project_type`, `project_title`, `primary_class`, `secondary_class`, `no_project_files`.
+
+### Step 4 — Generate PDF report
+
+```bash
+python generate_report.py 23293539-sq26-classification.db report.pdf
+```
+
+Produces a vector-graphics PDF report, one section per repository: a horizontal-bar histogram of primary classes (full class name as the label, count printed at the end of each bar), a rank-ordered top-20 table, and a comments section.
+
+### Regenerating the ISIC taxonomy
+
+`data/isic_taxonomy.json` is pre-built from the ISIC Rev. 5 spreadsheet. Only regenerate it if a new/updated spreadsheet is issued:
+
+```bash
+python build_isic_taxonomy.py path/to/ISIC5_reference.xlsx
+```
 
 ---
 
