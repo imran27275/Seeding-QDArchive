@@ -1,2 +1,8 @@
 requests>=2.31.0
 tqdm>=4.66.0
+python-docx
+pandas
+openpyxl
+scikit-learn
+matplotlib
+PyMuPDF      # optional: only used for best-effort text extraction from PDFs
